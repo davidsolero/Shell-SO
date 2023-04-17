@@ -11,7 +11,7 @@ To compile and run the program:
    $ gcc Shell_project.c job_control.c -o Shell
    $ ./Shell          
 	(then type ^D to exit program)
-
+Trabajo realizado por David Solero Chicano
 **/
 
 #include "job_control.h"   // remember to compile with module job_control.c 
@@ -39,8 +39,30 @@ int main(void)
 		fflush(stdout);
 		get_command(inputBuffer, MAX_LINE, args, &background);  /* get next command */
 		
+		
 		if(args[0]==NULL) continue;   // if empty command
+			pid_fork=fork();
 
+			
+        if (pid_fork < 0) {
+			perror("fork erroneo");
+			exit(-1);
+		}
+			
+			println("Foreground Pid: %d, command: %d, %d, info: %d", pid_fork, inputBuffer, status, info);
+			if (pid_fork==0){
+				execvp(args[0], args);
+				printf("Error, command not found: %s \n", args[0]);
+            	exit(-1);
+			}else{
+			
+			if (background==0){
+				pid_wait= waitpid(pid_fork, &status, 0);
+				status=analyze_status(status, &info);
+			}else{
+				continue;
+			}
+			}
 		/* the steps are:
 			 (1) fork a child process using fork()
 			 (2) the child process will invoke execvp()

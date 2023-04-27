@@ -1,4 +1,6 @@
 /**
+ * Nombre: David Solero Chicano
+ * 
 UNIX Shell Project
 
 Sistemas Operativos
@@ -11,16 +13,43 @@ To compile and run the program:
    $ gcc Shell_project.c job_control.c -o Shell
    $ ./Shell          
 	(then type ^D to exit program)
-Trabajo realizado por David Solero Chicano
+
 **/
 
 #include "job_control.h"   // remember to compile with module job_control.c 
-#include <string.h>
+#include "string.h"
 #define MAX_LINE 256 /* 256 chars per line, per command, should be enough. */
 
 // -----------------------------------------------------------------------
 //                            MAIN          
 // -----------------------------------------------------------------------
+job * lista_trabajos;
+
+void manejador() {
+	block_SIGCHLD();
+	for(int i = list_size(lista_trabajos); i >= 1 ; i--) {
+		job *trabajo = get_item_bypos(lista_trabajos, i);
+		if(trabajo != NULL) {
+			int estado, info;
+			int pid = trabajo -> pgid;
+			enum status status_res;
+			if(pid == waitpid(pid, &estado, WUNTRACED | WNOHANG)) {
+				status_res = analyze_status(estado, &info);
+				if(status_res == EXITED || status_res == SIGNALED ) {
+					printf("Background process %s (%d) %s\n", trabajo ->command, trabajo -> pgid, status_strings[status_res]);
+					printf("COMMAND->");
+					fflush(stdout);
+					delete_job(lista_trabajos, trabajo);
+				} else if (status_res == SUSPENDED) {
+					trabajo -> state = STOPPED;
+				} else if (status_res == CONTINUED) {
+					trabajo -> state == BACKGROUND;
+				}
+			}
+		}
+	}
+	unblock_SIGCHLD();
+}
 
 int main(void)
 {
@@ -32,52 +61,19 @@ int main(void)
 	int status;             /* status returned by wait */
 	enum status status_res; /* status processed by analyze_status() */
 	int info;				/* info processed by analyze_status() */
-	ignore_terminal_signals();
 
+	ignore_terminal_signals();
+	signal(SIGCHLD, manejador);
+	
+	lista_trabajos = new_list("Tareas");
 	while (1)   /* Program terminates normally inside get_command() after ^D is typed*/
 	{   		
 		printf("COMMAND->");
 		fflush(stdout);
 		get_command(inputBuffer, MAX_LINE, args, &background);  /* get next command */
 		
-		if(args[0]==NULL) continue; 
-		
-		if(strcmp (args[0], "cd") == 0) {	//es interno
-			chdir(args[1]);					
-			printf("Ejecutando el comando interno cd\n");
-		}else{
+		if(args[0]==NULL) continue;   // if empty command
 
-			pid_fork=fork();
-
-        if (pid_fork < 0) {
-			perror("fork erroneo");
-			exit(-1);
-		}
-			
-			if (pid_fork==0){
-				int gpid = new_process_group(getpid());		//le asignamos al proceso hijo un ide de grupo distinto al del padre
-				if(background == 0){
-					set_terminal(getpid());					//cuando un proc hijo se ejecuta en 1º plano, hacemos un set_terminal
-				}
-				restore_terminal_signals();					//es necesario de hacer antes de ejecutar un comando
-
-				execvp(args[0], args);
-				printf("Error, no se encuntra el comando o no es ejecutable\n");
-				exit(-1);
-
-			}else{
-			
-			if (background==0){
-				waitpid(pid_fork, &status, WUNTRACED);
-				set_terminal(getpid());	    //lo devuelve para no bloquearse
-				status_res=analyze_status(status, &info);
-
-				printf("Foreground Pid: %d, command: %s, %s, info: %d\n", pid_fork, args[0], status_strings[status_res], info);
-			}else{
-				printf("Background job running... pid: %d, command: %s\n", pid_fork, args[0]);
-			}
-			}
-		}
 		/* the steps are:
 			 (1) fork a child process using fork()
 			 (2) the child process will invoke execvp()
@@ -85,6 +81,40 @@ int main(void)
 			 (4) Shell shows a status message for processed command 
 			 (5) loop returns to get_commnad() function
 		*/
+		if(strcmp(args[0], "cd") == 0) {
+			chdir(args[1]);
+		} else {
+			pid_fork = fork();
+			if(pid_fork == 0) { //Proceso hijo
+				new_process_group(getpid());
+				if(background == 0) {
+					set_terminal(getpid());
+				}
+				restore_terminal_signals();
+				execvp(args[0], args);
+				printf("Error, command not found: %s\n", args[0]);
+				exit(-1);
+			} else {
+				
+				if(background == 0) {
+					
+					waitpid(pid_fork, &status, WUNTRACED);
+					set_terminal(getpid());
+					
+					status_res = analyze_status(status, &info);
+					if(status_res == SUSPENDED) {
+						add_job(lista_trabajos, new_job(pid_fork, args[0], STOPPED));
+					}
+					printf("Foreground pid: %d, command: %s, %s, info: %d\n", pid_fork, args[0], status_strings[status_res] , info);
+					
+				} else {
+					printf("Background job running... pid: %d, command: %s\n", pid_fork, args[0]);
+					job * trabajo = new_job(pid_fork, args[0], BACKGROUND);
+					add_job(lista_trabajos, trabajo);
+				}
 
+			}
+		}
 	} // end while
 }
+

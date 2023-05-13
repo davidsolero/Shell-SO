@@ -214,7 +214,7 @@ int main(void)
 
 		if (file_out!=NULL)
 		{
-			if(NULL==(outfile=fopen(file_out, "r"))){
+			if(NULL==(outfile=fopen(file_out, "w"))){
 				printf("ERROR: no se pudo abrir fichero");
 				return(-1);
 			}
